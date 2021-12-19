@@ -3,6 +3,7 @@ package wrapper
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"syscall"
 	"time"
@@ -129,14 +130,12 @@ func (p *process) GetStatus(ctx context.Context) (*Status, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-p.doneCh:
-		return nil, errors.New("stopped")
+		return nil, fmt.Errorf("stopped, %w", p.err)
 	}
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-p.doneCh:
-		return nil, errors.New("stopped")
 	case s := <-ch:
 		return &s, nil
 	}

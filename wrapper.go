@@ -3,6 +3,7 @@ package wrapper
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -10,6 +11,7 @@ type Wrapper interface {
 	StartOrRenew(ctx context.Context, deadline time.Time) error
 	Stop(ctx context.Context, force bool) (Process, error)
 	UpdateMonitorOptions(ctx context.Context, opts MonitorOptions) error
+	Describe(ctx context.Context, w io.Writer)
 }
 
 type wrapper struct {
@@ -136,5 +138,36 @@ func (w *wrapper) UpdateMonitorOptions(ctx context.Context, opts MonitorOptions)
 		return fmt.Errorf("stopped: %w", w.monErr)
 	case w.monOptCh <- opts:
 		return nil
+	}
+}
+
+func (w *wrapper) Describe(ctx context.Context, wr io.Writer) {
+	process := w.process
+	if process == nil {
+		fmt.Fprintln(wr, "status: not running")
+		return
+	}
+	fmt.Fprintf(wr, "pid: %d\n", process.GetPid())
+	s, err := process.GetStatus(ctx)
+	if err != nil {
+		fmt.Fprintf(wr, "status: failed, %s\n", err.Error())
+		return
+	}
+	lease := time.Until(s.Deadline)
+	if lease < 0 {
+		stopping := ""
+		if s.Stopping {
+			stopping = ",stopping"
+		}
+		fmt.Fprintf(wr, "deadline: %s(timeout%s)\n", s.Deadline.Format(time.RFC3339Nano), stopping)
+	} else {
+		if lease > time.Second {
+			lease = lease.Round(time.Millisecond)
+		}
+		stopping := ""
+		if s.Stopping {
+			stopping = "(stopping)"
+		}
+		fmt.Fprintf(wr, "lease: %v%s\n", lease, stopping)
 	}
 }
